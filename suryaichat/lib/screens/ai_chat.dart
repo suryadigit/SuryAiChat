@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlighting/themes/github.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/chat_service.dart';
 
 class UserChat extends StatefulWidget {
@@ -14,7 +16,7 @@ class UserChat extends StatefulWidget {
   State<UserChat> createState() => _UserChatState();
 }
 
-class _UserChatState extends State<UserChat> {
+class _UserChatState extends State<UserChat> with TickerProviderStateMixin {
   final List<Map<String, dynamic>> _conversations = [];
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
@@ -25,6 +27,9 @@ class _UserChatState extends State<UserChat> {
   bool _isTyping = false;
   Timer? _typingTimer;
   int? _editingIndex;
+  bool _isExpanded = false;
+  late AnimationController _fabAnimationController;
+  late Animation<double> _fabAnimation;
 
   @override
   void initState() {
@@ -35,13 +40,23 @@ class _UserChatState extends State<UserChat> {
     });
     _addGreetingMessage();
     _textController.addListener(_updateSendButtonState);
+
+    _fabAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _fabAnimation = CurvedAnimation(
+      parent: _fabAnimationController,
+      curve: Curves.easeInOut,
+    );
   }
 
   void _addGreetingMessage() {
     setState(() {
       _conversations.add({
         'role': 'ai',
-        'content': 'Selamat datang di suryaichat! Siap membantu tugasmu 😊',
+        'content':
+            'Selamat datang di suryaichat! Siap membantu tugasmu 😎 sampai mampus tanpa batas!',
         'isCode': false,
       });
     });
@@ -56,6 +71,7 @@ class _UserChatState extends State<UserChat> {
     _scrollController.dispose();
     _textController.dispose();
     _typingTimer?.cancel();
+    _fabAnimationController.dispose();
     super.dispose();
   }
 
@@ -94,8 +110,6 @@ class _UserChatState extends State<UserChat> {
                     alignment: Alignment.centerLeft,
                     child: AIChat(
                       message: {'content': _typingMessage, 'isCode': false},
-                      onLongPress:
-                          () {}, // dummy function or null, adjust as needed
                     ),
                   );
                 }
@@ -109,9 +123,6 @@ class _UserChatState extends State<UserChat> {
                           ? CodeMessage(message: message)
                           : AIChat(
                               message: message,
-                              onLongPress: () {
-                                _editMessage(index);
-                              },
                             ))
                       : UserChatMessage(
                           message: message,
@@ -125,103 +136,172 @@ class _UserChatState extends State<UserChat> {
           ),
           Padding(
             padding: const EdgeInsets.all(8.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10.0),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.5),
-                    spreadRadius: 2,
-                    blurRadius: 5,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Stack(
-                  children: [
-                    Container(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.1,
-                      ),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.vertical,
-                        reverse: true,
-                        child: TextFormField(
-                          controller: _textController,
-                          maxLines: null,
-                          style: const TextStyle(fontSize: 14),
-                          decoration: InputDecoration(
-                            hintText: 'Kirim sebuah pesan',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10.0),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 12.0, horizontal: 50),
-                          ),
-                          onFieldSubmitted: (value) {
-                            if (value.isNotEmpty) {
-                              if (_editingIndex != null) {
-                                _submitEditedMessage();
-                              } else {
-                                _submitForm();
-                              }
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Row(
-                        children: [
-                          IconButton(
-                            onPressed: () {
-                              if (_chatService.isListening) {
-                                _chatService.stopListening();
-                              } else {
-                                startListening();
-                              }
-                            },
-                            icon: Icon(_chatService.isListening
-                                ? Icons.mic_off
-                                : Icons.mic),
-                            color: Colors.grey,
-                          ),
-                          IconButton(
-                            onPressed: (_isLoading ||
-                                    _textController.text.trim().isEmpty)
-                                ? null
-                                : () {
-                                    if (_textController.text.isNotEmpty) {
-                                      if (_editingIndex != null) {
-                                        _submitEditedMessage();
-                                      } else {
-                                        _submitForm();
-                                      }
-                                    }
-                                  },
-                            icon: _isLoading
-                                ? const CircularProgressIndicator()
-                                : Icon(
-                                    PhosphorIcons.paperPlaneRight(),
-                                    size: 21.0,
-                                    color: Colors.blue[400],
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 100),
+              child: _isExpanded ? _buildExpandedInput() : _buildFab(),
             ),
           )
         ],
+      ),
+    );
+  }
+
+  Widget _buildExpandedInput() {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.4,
+      ),
+      key: const ValueKey('expandedInput'),
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(30.0),
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _textController,
+                    maxLines: null,
+                    style: const TextStyle(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Kirim sebuah pesan',
+                      hintStyle: const TextStyle(fontFamily: 'Monospace'),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.0),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 8.0, horizontal: 12.0),
+                    ),
+                    onFieldSubmitted: (value) {
+                      if (value.isNotEmpty) {
+                        if (_editingIndex != null) {
+                          _submitEditedMessage();
+                        } else {
+                          _submitForm();
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            bottom: 8,
+            right: 8,
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    if (_chatService.isListening) {
+                      _chatService.stopListening();
+                    } else {
+                      startListening();
+                    }
+                  },
+                  icon: Icon(
+                    _chatService.isListening
+                        ? PhosphorIconsFill.microphone
+                        : PhosphorIconsFill.microphoneSlash,
+                  ),
+                  color: Colors.grey,
+                ),
+                IconButton(
+                  onPressed: (_isLoading || _textController.text.trim().isEmpty)
+                      ? null
+                      : () {
+                          if (_textController.text.isNotEmpty) {
+                            if (_editingIndex != null) {
+                              _submitEditedMessage();
+                            } else {
+                              _submitForm();
+                            }
+                          }
+                        },
+                  icon: _isLoading
+                      ? const SizedBox(
+                          height: 23.0,
+                          width: 23.0,
+                          child: CircularProgressIndicator(
+                            color: Colors.blue,
+                            strokeWidth: 2.0,
+                          ),
+                        )
+                      : Container(
+                          height: 36.0,
+                          width: 36.0,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.blue,
+                          ),
+                          child: const Icon(
+                            PhosphorIconsFill.paperPlaneRight,
+                            size: 21.0,
+                            color: Colors.white,
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFab() {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 6, right: _isExpanded ? 12.0 : 0),
+      child: Align(
+        alignment: Alignment.bottomRight,
+        child: Padding(
+          padding: EdgeInsets.only(
+            right: _isExpanded ? 12.0 : 0,
+          ),
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _isExpanded = true;
+              });
+            },
+            onTapDown: (_) {
+              _fabAnimationController.forward();
+            },
+            onTapCancel: () {
+              _fabAnimationController.reverse();
+            },
+            onTapUp: (_) {
+              _fabAnimationController.reverse();
+            },
+            child: AnimatedBuilder(
+              animation: _fabAnimation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: 1.0 - (_fabAnimation.value * 0.15),
+                  child: Container(
+                    width: 56.0 + (_fabAnimation.value * 18.0),
+                    height: 58.0,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.grey[200],
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        PhosphorIconsFill.chatsTeardrop,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -245,12 +325,13 @@ class _UserChatState extends State<UserChat> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
+          backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
           content: Row(
             children: [
               Icon(Icons.error_outline, color: Colors.white),
               SizedBox(width: 8),
-              Text('Perangkat kamu tidak mendukung.'),
+              Text('Ops Dalam Pengembangan!'),
             ],
           ),
         ),
@@ -271,7 +352,7 @@ class _UserChatState extends State<UserChat> {
 
     try {
       final aiResponse = await _chatService.sendMessage(userInput);
-      _simulateTyping(aiResponse);
+      _simulateTyping(aiResponse, isCode: aiResponse.contains('```'));
     } catch (error) {
       showDialog(
         context: context,
@@ -293,6 +374,7 @@ class _UserChatState extends State<UserChat> {
     } finally {
       setState(() {
         _isLoading = false;
+        _isExpanded = false;
       });
     }
 
@@ -313,6 +395,7 @@ class _UserChatState extends State<UserChat> {
 
     try {
       final aiResponse = await _chatService.sendMessage(editedMessage);
+      aiResponse.contains('```');
       _conversations[_editingIndex!] = {
         'role': 'user',
         'content': editedMessage,
@@ -341,13 +424,15 @@ class _UserChatState extends State<UserChat> {
       setState(() {
         _isLoading = false;
         _editingIndex = null;
+        _isExpanded = false;
       });
     }
 
     _scrollToBottom();
   }
 
-  void _simulateTyping(String message, {bool isEditing = false}) {
+  void _simulateTyping(String message,
+      {bool isEditing = false, bool isCode = false}) {
     setState(() {
       _isTyping = true;
       _typingMessage = '';
@@ -372,7 +457,7 @@ class _UserChatState extends State<UserChat> {
               _conversations.add({
                 'role': 'ai',
                 'content': _typingMessage,
-                'isCode': false,
+                'isCode': isCode,
               });
             }
           }
@@ -400,6 +485,7 @@ class _UserChatState extends State<UserChat> {
     setState(() {
       _textController.text = _conversations[index]['content'];
       _editingIndex = index;
+      _isExpanded = true;
     });
   }
 }
@@ -411,8 +497,8 @@ class UserChatMessage extends StatelessWidget {
   const UserChatMessage({
     required this.message,
     required this.onLongPress,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -441,36 +527,82 @@ class UserChatMessage extends StatelessWidget {
 
 class AIChat extends StatelessWidget {
   final Map<String, dynamic> message;
-  final VoidCallback onLongPress;
 
   const AIChat({
-    required this.message,
-    required this.onLongPress,
     Key? key,
+    required this.message,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPress: onLongPress,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-        padding: const EdgeInsets.all(12.0),
-        decoration: const BoxDecoration(
+    final String content = message['content'];
+    final List<TextSpan> spans = _buildContentSpans(content);
+
+    return Container(
+      margin: const EdgeInsets.all(8.0),
+      padding: const EdgeInsets.all(10.0),
+      decoration: BoxDecoration(
           color: Color.fromARGB(255, 238, 237, 237),
-          borderRadius: BorderRadius.only(
+         borderRadius: BorderRadius.only(
             topRight: Radius.circular(12.0),
             bottomRight: Radius.circular(12.0),
             topLeft: Radius.circular(0),
             bottomLeft: Radius.circular(12.0),
           ),
-        ),
-        child: Text(
-          message['content'],
-          style: const TextStyle(color: Colors.black),
+      ),
+      child: RichText(
+        text: TextSpan(
+          children: spans,
+          style: const TextStyle(
+            fontSize: 15.0,
+            color: Colors.black,
+          ),
         ),
       ),
     );
+  }
+
+  List<TextSpan> _buildContentSpans(String content) {
+    final RegExp urlRegex = RegExp(
+      r'((http|https):\/\/)?[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,3}(\/\S*)?',
+    );
+
+    final List<TextSpan> spans = [];
+    int lastMatchEnd = 0;
+
+    urlRegex.allMatches(content).forEach((match) {
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(text: content.substring(lastMatchEnd, match.start)));
+      }
+
+      final String url = content.substring(match.start, match.end);
+      spans.add(
+        TextSpan(
+          text: url,
+          style: const TextStyle(
+            color: Colors.blue,
+            decoration: TextDecoration.underline,
+          ),
+          recognizer: TapGestureRecognizer()..onTap = () => _launchURL(url),
+        ),
+      );
+
+      lastMatchEnd = match.end;
+    });
+
+    if (lastMatchEnd < content.length) {
+      spans.add(TextSpan(text: content.substring(lastMatchEnd)));
+    }
+
+    return spans;
+  }
+
+  void _launchURL(String url) async {
+    if (await canLaunch(url)) {
+      await launch(url);
+    } else {
+      throw 'Could not launch $url';
+    }
   }
 }
 
@@ -479,58 +611,144 @@ class CodeMessage extends StatelessWidget {
 
   const CodeMessage({
     required this.message,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
+
+  String _extractLanguage(String content) {
+    final startIndex = content.indexOf('```') + 3;
+    final endIndex = content.indexOf('\n', startIndex);
+    if (startIndex != -1 && endIndex != -1) {
+      return content.substring(startIndex, endIndex).trim();
+    }
+    return '';
+  }
+
+  String _extractCode(String content) {
+    final startIndex = content.indexOf('\n') + 1;
+    final endIndex = content.lastIndexOf('```');
+    if (startIndex != -1 && endIndex != -1) {
+      return content.substring(startIndex, endIndex).trim();
+    }
+    return content.replaceAll('```', '').trim();
+  }
+
+  String _extractTextBeforeCode(String content) {
+    final codeStartIndex = content.indexOf('```');
+    if (codeStartIndex != -1) {
+      return content.substring(0, codeStartIndex).trim();
+    }
+    return '';
+  }
+
+  String _extractTextAfterCode(String content) {
+    final codeEndIndex = content.lastIndexOf('```') + 3;
+    if (codeEndIndex != -1 && codeEndIndex < content.length) {
+      return content.substring(codeEndIndex).trim();
+    }
+    return '';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Container(
-          margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12.0),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.2),
-                spreadRadius: 2,
-                blurRadius: 12,
-                offset: const Offset(0, 1),
-              ),
-            ],
+    final language = _extractLanguage(message['content']);
+    final code = _extractCode(message['content']);
+    final textBeforeCode = _extractTextBeforeCode(message['content']);
+    final textAfterCode = _extractTextAfterCode(message['content']);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 2,
+            blurRadius: 12,
+            offset: const Offset(0, 1),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SizedBox(
-              width: double.infinity,
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (textBeforeCode.isNotEmpty)
+              Text(
+                textBeforeCode,
+                style: const TextStyle(color: Colors.black),
+              ),
+            const SizedBox(height: 8.0),
+            GestureDetector(
+              onLongPress: () {
+                Clipboard.setData(ClipboardData(text: code));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Kode disalin!')),
+                );
+              },
               child: HighlightView(
-                message['content'].replaceAll('```', ''),
-                language: '',
+                code,
+                language: language,
                 theme: githubTheme,
-                textStyle:
-                    const TextStyle(fontFamily: 'monospace', fontSize: 12.0),
+                textStyle: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12.0,
+                ),
               ),
             ),
-          ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  language,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12.0,
+                    color: Colors.grey,
+                  ),
+                ),
+               
+               Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'Salin kode',
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11.0,
+                        color: Colors.blue,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        PhosphorIconsBold.clipboardText,
+                        color: Colors.blue,
+                        size: 16,
+                      ),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: code));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Kode disalin!')),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+
+              ],
+            ),
+            if (textAfterCode.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  textAfterCode,
+                  style: const TextStyle(color: Colors.black),
+                ),
+              ),
+          ],
         ),
-        Positioned(
-          bottom: 8,
-          right: 8,
-          child: IconButton(
-            icon: const Icon(Icons.copy, color: Colors.blue, size: 16),
-            onPressed: () {
-              Clipboard.setData(
-                ClipboardData(text: message['content'].replaceAll('```', '')),
-              );
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Kode disalin!')),
-              );
-            },
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
- 
