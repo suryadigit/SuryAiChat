@@ -20,7 +20,7 @@ class ChatService {
     apiUrl = dotenv.env['API_URL']!;
   }
 
- Future<String> sendMessage(String userInput) async {
+ Future<String> sendMessage(String userInput, List<String> list) async {
     _conversationHistory.add({"role": "user", "content": userInput});
 
     try {
@@ -33,7 +33,7 @@ class ChatService {
         },
         body: jsonEncode(
           <String, dynamic>{
-            "model": "gpt-3.5-turbo",
+            "model": "gpt-4o",
             "messages": [
               {
                 "role": "system",
@@ -47,7 +47,7 @@ class ChatService {
               },
               ..._conversationHistory,
             ],
-            'max_tokens': 1000,
+            'max_tokens': 2000,
           },
         ),
       );
