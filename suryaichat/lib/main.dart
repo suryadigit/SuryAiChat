@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'screens/ai_chat.dart';
+import 'screens/UserChatPage.dart';
 
 Future<void> main() async {
   await dotenv.load(fileName: '.env');
@@ -18,7 +18,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.white),
         
-        useMaterial3: true,
+         
       ),
       home: const UserChat(),
     );
