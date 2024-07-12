@@ -1,7 +1,6 @@
 // ignore_for_file: prefer_final_fields
 
 import 'dart:convert';
-import 'package:connectivity/connectivity.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:http/http.dart' as http;
@@ -21,14 +20,8 @@ class ChatService {
     apiUrl = dotenv.env['API_URL']!;
   }
 
-  Future<String> sendMessage(String userInput, List<String> list) async {
+ Future<String> sendMessage(String userInput, List<String> list) async {
     _conversationHistory.add({"role": "user", "content": userInput});
-
-    // Check internet connectivity
-    // var connectivityResult = await Connectivity().checkConnectivity();
-    // if (connectivityResult == ConnectivityResult.none) {
-    //   return 'Tidak ada koneksi internet. Mohon periksa koneksi Anda dan coba lagi.';
-    // }
 
     try {
       final response = await http.post(
@@ -40,7 +33,7 @@ class ChatService {
         },
         body: jsonEncode(
           <String, dynamic>{
-            "model": "gpt-3.5-turbo",
+            "model": "gpt-4o",
             "messages": [
               {
                 "role": "system",
@@ -48,7 +41,7 @@ class ChatService {
                     '''Anda adalah asisten AI yang bernama suryaichat yang cerdas, responsif, 
                     dan asik diajak ngobrol.
                     Jawablah pertanyaan dengan gaya santai dan humor ala warga +62 yang random 
-                    suka ngomong anjay, anjir, dan serius, dan selalu memberikan informasi yang akurat dan
+                    suka ngomong anjay, anjir,dan serius, dan selalu memberikan informasi yang akurat dan
                     bermanfaat. bisa juga memberikan link website yang dicari oleh user.
                     Jadilah teman curhat yang selalu punya jawaban lengkap dan memadai.'''
               },
@@ -62,7 +55,7 @@ class ChatService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         String aiResponse = responseData['choices'][0]['message']['content'];
-
+         
         String filteredResponse = '';
         for (int i = 0; i < aiResponse.length; i++) {
           String char = aiResponse[i];
@@ -81,6 +74,7 @@ class ChatService {
       throw Exception('Error occurred while sending message: $e');
     }
   }
+
 
   Future<void> initializeSpeech() async {
     await _speech.initialize();
