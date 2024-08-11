@@ -20,7 +20,7 @@ class ChatService {
     apiUrl = dotenv.env['API_URL']!;
   }
 
- Future<String> sendMessage(String userInput, List<String> list) async {
+  Future<String> sendMessage(String userInput) async {
     _conversationHistory.add({"role": "user", "content": userInput});
 
     try {
@@ -33,7 +33,7 @@ class ChatService {
         },
         body: jsonEncode(
           <String, dynamic>{
-            "model": "gpt-4o",
+            "model": "gpt-3.5-turbo",
             "messages": [
               {
                 "role": "system",
@@ -47,7 +47,7 @@ class ChatService {
               },
               ..._conversationHistory,
             ],
-            'max_tokens': 2000,
+            'max_tokens': 1000,
           },
         ),
       );
@@ -55,7 +55,7 @@ class ChatService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         String aiResponse = responseData['choices'][0]['message']['content'];
-         
+
         String filteredResponse = '';
         for (int i = 0; i < aiResponse.length; i++) {
           String char = aiResponse[i];
@@ -74,7 +74,6 @@ class ChatService {
       throw Exception('Error occurred while sending message: $e');
     }
   }
-
 
   Future<void> initializeSpeech() async {
     await _speech.initialize();

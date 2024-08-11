@@ -302,7 +302,7 @@ class _UserChatState extends State<UserChat> with TickerProviderStateMixin {
     });
 
     try {
-      final aiResponse = await _chatService.sendMessage(userInput, []);
+      final aiResponse = await _chatService.sendMessage(userInput,);
       _simulateTyping(aiResponse, isCode: aiResponse.contains('```'));
     } catch (error) {
       showDialog(
@@ -346,7 +346,7 @@ class _UserChatState extends State<UserChat> with TickerProviderStateMixin {
     });
 
     try {
-      final aiResponse = await _chatService.sendMessage(editedMessage, []);
+      final aiResponse = await _chatService.sendMessage(editedMessage);
       aiResponse.contains('```');
       _conversations[_editingIndex!] = {
         'role': 'user',
